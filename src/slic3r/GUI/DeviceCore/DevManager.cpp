@@ -517,8 +517,9 @@ namespace Slic3r
         userMachineList.clear();
     }
 
-    bool DeviceManager::set_selected_machine(std::string dev_id)
+    bool DeviceManager::set_selected_machine(std::string dev_id, bool user_initiated)
     {
+        m_user_initiated_connect = user_initiated;
         BOOST_LOG_TRIVIAL(info) << "set_selected_machine=" << BBLCrossTalk::Crosstalk_DevId(dev_id)
             << " cur_selected=" << BBLCrossTalk::Crosstalk_DevId(selected_machine);
         auto my_machine_list = get_my_machine_list();

@@ -295,7 +295,7 @@ void MonitorPanel::on_select_printer(wxCommandEvent& event)
         m_hms_panel->clear_hms_tag();
     }
 
-    if (!dev->set_selected_machine(event.GetString().ToStdString()))
+    if (!dev->set_selected_machine(event.GetString().ToStdString(), true))
         return;
 
     set_default();

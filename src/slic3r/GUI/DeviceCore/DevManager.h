@@ -21,6 +21,7 @@ private:
     DeviceManagerRefresher* m_refresher{ nullptr };
 
     bool m_enable_mutil_machine = false;
+    bool m_user_initiated_connect = false;
 
     std::mutex listMutex;
     std::string selected_machine;                               /* dev_id */
@@ -40,7 +41,8 @@ public:
     void stop_refresher();
 
     MachineObject* get_selected_machine();
-    bool set_selected_machine(std::string dev_id);
+    bool set_selected_machine(std::string dev_id, bool user_initiated = false);
+    bool is_user_initiated_connect() const { return m_user_initiated_connect; }
     void load_last_machine();
 
     // local machine

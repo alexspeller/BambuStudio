@@ -83,6 +83,8 @@ wxDEFINE_EVENT(EVT_CLEAR_IPADDRESS, wxCommandEvent);
 
 static wxString task_canceled_text = _L("Task canceled");
 static int s_nozzle_mapping_last_request_time = 0;
+static int s_nozzle_mapping_reconnect_attempts = 0;
+static int s_nozzle_mapping_last_reconnect_time = 0;
 
 std::string get_nozzle_volume_type_cloud_string(NozzleVolumeType nozzle_volume_type)
 {
@@ -3664,6 +3666,8 @@ void SelectMachineDialog::on_selection_changed(wxCommandEvent &event)
     m_status_bar->reset();
     m_timeout_count      = 0;
     s_nozzle_mapping_last_request_time = 0;
+    s_nozzle_mapping_reconnect_attempts = 0;
+    s_nozzle_mapping_last_reconnect_time = 0;
     m_ams_mapping_result.clear();
     m_pre_print_checker.clear();
 
@@ -3706,9 +3710,9 @@ void SelectMachineDialog::on_selection_changed(wxCommandEvent &event)
         obj->command_request_push_all();
         obj->get_nozzle_mapping_result()->SetPlater(m_plater);
         if (!dev->get_selected_machine()) {
-            dev->set_selected_machine(m_printer_last_select);
+            dev->set_selected_machine(m_printer_last_select, true);
         }else if (dev->get_selected_machine()->get_dev_id() != m_printer_last_select) {
-            dev->set_selected_machine(m_printer_last_select);
+            dev->set_selected_machine(m_printer_last_select, true);
         }
 
         // Has changed machine unrecoverably
@@ -5983,7 +5987,40 @@ bool SelectMachineDialog::CheckErrorSyncNozzleMappingResultV0(MachineObject* obj
             int rtn = obj_nozzle_mapping_ptr->CtrlGetAutoNozzleMappingV0(m_plater, m_ams_mapping_result, m_checkbox_list["flow_cali"]->getValueInt(), m_pa_value_switch->GetValue() ? 0 : 1);
             if (rtn == 0) {
                 s_nozzle_mapping_last_request_time = time(nullptr);
+                s_nozzle_mapping_reconnect_attempts = 0;
+                s_nozzle_mapping_last_reconnect_time = 0;
             } else {
+                if (s_nozzle_mapping_reconnect_attempts < 3) {
+                    int now = time(nullptr);
+                    if (now - s_nozzle_mapping_last_reconnect_time >= 5) {
+                        s_nozzle_mapping_reconnect_attempts++;
+                        s_nozzle_mapping_last_reconnect_time = now;
+                        s_nozzle_mapping_last_request_time = now;
+
+                        BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << ": send failed (code=" << rtn
+                            << "), attempting MQTT reconnect " << s_nozzle_mapping_reconnect_attempts << "/3";
+
+                        if (obj_->is_lan_mode_printer()) {
+                            obj_->disconnect();
+                            obj_->clear_auto_nozzle_mapping();
+#if !BBL_RELEASE_TO_PUBLIC
+                            obj_->connect(Slic3r::GUI::wxGetApp().app_config->get("enable_ssl_for_mqtt") == "true" ? true : false);
+#else
+                            obj_->connect(obj_->local_use_ssl_for_mqtt);
+#endif
+                        } else {
+                            obj_->clear_auto_nozzle_mapping();
+                            obj_->reset_update_time();
+                            Slic3r::GUI::wxGetApp().on_start_subscribe_again(obj_->get_dev_id());
+                        }
+                    }
+                    const auto& reconnect_msg = wxString::Format(
+                        _L("Connection issue detected. Reconnecting to printer... (attempt %d/%d)"),
+                        s_nozzle_mapping_reconnect_attempts, 3);
+                    show_status(PrintDialogStatus::PrintStatusRackNozzleMappingWaiting, { reconnect_msg });
+                    return false;
+                }
+
                 const auto& err_msg = wxString::Format(_L("Failed to send nozzle auto-mapping request to printer { code: %d }. "
                                                        "Please try to refresh the printer information. "
                                                        "If it still does not recover, you can try to rebind the printer and check the network connection."), rtn);
@@ -6010,6 +6047,8 @@ bool SelectMachineDialog::CheckErrorSyncNozzleMappingResultV0(MachineObject* obj
 
     const auto& mapping_map = obj_->get_nozzle_mapping_result()->GetNozzleMappingMap();
     if (!mapping_map.empty()) {
+        s_nozzle_mapping_reconnect_attempts = 0;
+        s_nozzle_mapping_last_reconnect_time = 0;
         // mapping result changed, update related gui
         if (m_nozzle_mapping_result != mapping_map) {
             m_nozzle_mapping_result = mapping_map;

@@ -1225,11 +1225,11 @@ void SendToPrinterDialog::on_selection_changed(wxCommandEvent &event)
         obj->command_get_version();
         obj->command_request_push_all();
         if (!dev->get_selected_machine()) {
-            dev->set_selected_machine(m_printer_last_select);
+            dev->set_selected_machine(m_printer_last_select, true);
 
         }else if (dev->get_selected_machine()->get_dev_id() != m_printer_last_select) {
             update_storage_list(std::vector<std::string>());
-            dev->set_selected_machine(m_printer_last_select);
+            dev->set_selected_machine(m_printer_last_select, true);
         }
     }
     else {

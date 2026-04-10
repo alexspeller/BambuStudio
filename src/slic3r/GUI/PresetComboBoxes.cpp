@@ -338,7 +338,7 @@ wxString PresetComboBox::get_preset_item_name(unsigned int index)
                 m_selected_dev_id = *iter;
                 Preset* machine_preset = get_printer_preset(machine_list[*iter]);
                 if (machine_preset) {
-                    dev->set_selected_machine(*iter);
+                    dev->set_selected_machine(*iter, true);
                     return from_u8(machine_preset->name);
                 }
             }

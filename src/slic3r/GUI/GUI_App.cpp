@@ -2188,10 +2188,12 @@ void GUI_App::init_networking_callbacks()
                                     obj->erase_user_access_code();
                                     obj->erase_user_access_dev_ip();
                                     text = wxString::Format(_L("Incorrect password"));
-                                    wxGetApp().show_dialog(text);
+                                    if (m_device_manager->is_user_initiated_connect())
+                                        wxGetApp().show_dialog(text);
                                 } else {
                                     text = wxString::Format(_L("Connect %s failed! [SN:%s, code=%s]"), from_u8(obj->get_dev_name()), obj->get_dev_id(), msg);
-                                    wxGetApp().show_dialog(text);
+                                    if (m_device_manager->is_user_initiated_connect())
+                                        wxGetApp().show_dialog(text);
                                 }
                                 event.SetInt(-1);
                             } else if (state == ConnectStatus::ConnectStatusLost) {

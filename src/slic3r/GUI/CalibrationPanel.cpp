@@ -172,13 +172,13 @@ void MObjectPanel::on_mouse_left_up(wxMouseEvent& evt)
             if (m_info->has_access_right() && m_info->is_avaliable()) {
                 Slic3r::DeviceManager* dev = Slic3r::GUI::wxGetApp().getDeviceManager();
                 if (!dev) return;
-                dev->set_selected_machine(m_info->get_dev_id());
+                dev->set_selected_machine(m_info->get_dev_id(), true);
             }
         }
         else {
             Slic3r::DeviceManager* dev = Slic3r::GUI::wxGetApp().getDeviceManager();
             if (!dev) return;
-            dev->set_selected_machine(m_info->get_dev_id());
+            dev->set_selected_machine(m_info->get_dev_id(), true);
         }
         wxCommandEvent event(EVT_DISSMISS_MACHINE_LIST);
         event.SetEventObject(this->GetParent()->GetParent());
