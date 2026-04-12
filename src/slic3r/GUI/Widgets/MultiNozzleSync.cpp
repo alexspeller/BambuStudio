@@ -939,10 +939,37 @@ bool MultiNozzleSyncDialog::UpdateOptionList(std::weak_ptr<DevNozzleRack> rack, 
     OnSelectRadio(recommend_idx);
     m_list_table->SetOptions(options,recommend_idx);
 
-        if (!has_unknown && !has_unreliable && options.size() == 1) {
+    if (!has_unknown && !has_unreliable) {
+        if (options.size() == 1) {
             return false;
         }
-        return true;
+
+        // Auto-select when the project's nozzle diameter matches an available option.
+        // If extruders have different diameters, show the dialog so the user can pick one
+        // (firmware doesn't support mixed diameters in a single print).
+        auto* preset_bundle = wxGetApp().preset_bundle;
+        if (preset_bundle) {
+            auto nozzle_diameter_opt = preset_bundle->printers.get_edited_preset()
+                .config.option<ConfigOptionFloatsNullable>("nozzle_diameter");
+            if (nozzle_diameter_opt && !nozzle_diameter_opt->values.empty()) {
+                std::string project_diameter = format_diameter_to_str(nozzle_diameter_opt->values[0]);
+                bool all_same = std::all_of(
+                    nozzle_diameter_opt->values.begin(),
+                    nozzle_diameter_opt->values.end(),
+                    [&](double d) { return format_diameter_to_str(d) == project_diameter; });
+
+                if (all_same) {
+                    for (size_t i = 0; i < options.size(); ++i) {
+                        if (options[i].diameter == project_diameter) {
+                            OnSelectRadio(static_cast<int>(i));
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return true;
 }
 
 void MultiNozzleSyncDialog::UpdateTip(std::weak_ptr<DevNozzleRack> rack, bool ignore_unknown, bool ignore_unreliable)

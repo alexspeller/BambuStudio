@@ -752,7 +752,7 @@ struct Sidebar::priv
 
     bool sync_extruder_list(bool &only_external_material, bool is_manual = false);
     std::optional<NozzleOption> get_nozzle_options(MachineObject *obj, int extruder_count, bool support_multi_nozzle, bool is_manual);
-    bool switch_diameter(bool single);
+    bool switch_diameter(bool single, const wxString& user_chosen_diameter = wxEmptyString);
     void update_right_extruder_group_color();
     void update_sync_status(const MachineObject* obj);
     void adjust_filament_title_layout();
@@ -1841,7 +1841,7 @@ void ExtruderGroup::sync_ams(MachineObject const *obj, std::vector<DevAms *> con
         update_ams();
 }
 
-bool Sidebar::priv::switch_diameter(bool single)
+bool Sidebar::priv::switch_diameter(bool single, const wxString& user_chosen_diameter)
 {
     wxString diameter;
     if (single) {
@@ -1850,23 +1850,28 @@ bool Sidebar::priv::switch_diameter(bool single)
         auto diameter_left = left_extruder->combo_diameter->GetValue();
         auto diameter_right = right_extruder->combo_diameter->GetValue();
         if (diameter_left != diameter_right) {
-            std::string sd_printer_type = wxGetApp().preset_bundle->printers.get_edited_preset().get_printer_type(wxGetApp().preset_bundle);
-            auto sd_left_name  = _L(DevPrinterConfigUtil::get_toolhead_display_name(sd_printer_type, DEPUTY_EXTRUDER_ID, ToolHeadComponent::Nozzle, ToolHeadNameCase::SentenceCase));
-            auto sd_right_name = _L(DevPrinterConfigUtil::get_toolhead_display_name(sd_printer_type, MAIN_EXTRUDER_ID, ToolHeadComponent::Nozzle, ToolHeadNameCase::SentenceCase));
-            MessageDialog dlg(this->plater,
-                              _L("The software does not support using different diameter of nozzles for one print.\n"
-                                 "If the left and right nozzles are inconsistent, we can only proceed with single-head printing.\n"
-                                 "Please confirm which nozzle you would like to use for this project."),
-                              _L("Switch diameter"), wxYES_NO | wxNO_DEFAULT);
-            dlg.SetButtonLabel(wxID_YES, wxString::Format("%s: %smm", sd_left_name, diameter_left));
-            dlg.SetButtonLabel(wxID_NO, wxString::Format("%s: %smm", sd_right_name, diameter_right));
-            int result = dlg.ShowModal();
-            if (result == wxID_YES)
-                diameter = diameter_left;
-            else if (result == wxID_NO)
-                diameter = diameter_right;
-            else
-                return false;
+            if (!user_chosen_diameter.empty()) {
+                // User explicitly changed a nozzle diameter — use their choice directly
+                diameter = user_chosen_diameter;
+            } else {
+                std::string sd_printer_type = wxGetApp().preset_bundle->printers.get_edited_preset().get_printer_type(wxGetApp().preset_bundle);
+                auto sd_left_name  = _L(DevPrinterConfigUtil::get_toolhead_display_name(sd_printer_type, DEPUTY_EXTRUDER_ID, ToolHeadComponent::Nozzle, ToolHeadNameCase::SentenceCase));
+                auto sd_right_name = _L(DevPrinterConfigUtil::get_toolhead_display_name(sd_printer_type, MAIN_EXTRUDER_ID, ToolHeadComponent::Nozzle, ToolHeadNameCase::SentenceCase));
+                MessageDialog dlg(this->plater,
+                                  _L("The software does not support using different diameter of nozzles for one print.\n"
+                                     "If the left and right nozzles are inconsistent, we can only proceed with single-head printing.\n"
+                                     "Please confirm which nozzle you would like to use for this project."),
+                                  _L("Switch diameter"), wxYES_NO | wxNO_DEFAULT);
+                dlg.SetButtonLabel(wxID_YES, wxString::Format("%s: %smm", sd_left_name, diameter_left));
+                dlg.SetButtonLabel(wxID_NO, wxString::Format("%s: %smm", sd_right_name, diameter_right));
+                int result = dlg.ShowModal();
+                if (result == wxID_YES)
+                    diameter = diameter_left;
+                else if (result == wxID_NO)
+                    diameter = diameter_right;
+                else
+                    return false;
+            }
         }
         else {
             diameter = diameter_left;
@@ -1900,8 +1905,12 @@ bool Sidebar::priv::sync_extruder_list(bool &only_external_material, bool is_man
     auto           printer_name = plater->get_selected_printer_name_in_combox();
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << __LINE__ << " begin sync_extruder_list";
     if (obj == nullptr || !obj->is_online()) {
-        plater->pop_warning_and_go_to_device_page(printer_name, Plater::PrinterWarningType::NOT_CONNECTED, _L("Sync printer information"));
-        return false;
+        if (plater->pop_warning_and_go_to_device_page(printer_name, Plater::PrinterWarningType::NOT_CONNECTED, _L("Sync printer information"))) {
+            // Auto-connect succeeded, refresh obj
+            obj = wxGetApp().getDeviceManager()->get_selected_machine();
+        } else {
+            return false;
+        }
     }
     //if (obj->get_extder_system()->extders.size() != 2) {//wxString(obj->get_preset_printer_model_name(machine_print_name))
     //    plater->pop_warning_and_go_to_device_page(printer_name, Plater::PrinterWarningType::INCONSISTENT, _L("Sync printer information"));
@@ -2700,7 +2709,7 @@ Sidebar::Sidebar(Plater *parent)
         auto switch_diameter = [this](wxCommandEvent & evt) {
             auto extruder = dynamic_cast<ExtruderGroup *>(dynamic_cast<ComboBox *>(evt.GetEventObject())->GetParent());
             p->is_switching_diameter = true;
-            auto result              = p->switch_diameter(extruder == p->single_extruder);
+            auto result              = p->switch_diameter(extruder == p->single_extruder, extruder->combo_diameter->GetValue());
             p->is_switching_diameter = false;
             if (!result)
                 extruder->combo_diameter->SetValue(extruder->diameter);
@@ -4479,8 +4488,14 @@ void Sidebar::sync_ams_list(bool is_from_big_sync_btn)
             BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << "obj->is_online(): " << obj->is_online();
         }
         auto printer_name = p->plater->get_selected_printer_name_in_combox();
-        p->plater->pop_warning_and_go_to_device_page(printer_name, Plater::PrinterWarningType::NOT_CONNECTED, _L("Sync printer information"));
-        return;
+        if (p->plater->pop_warning_and_go_to_device_page(printer_name, Plater::PrinterWarningType::NOT_CONNECTED, _L("Sync printer information"))) {
+            // Auto-connect succeeded, refresh obj and ams list
+            obj = wxGetApp().getDeviceManager()->get_selected_machine();
+            if (obj)
+                GUI::wxGetApp().sidebar().load_ams_list(obj);
+        } else {
+            return;
+        }
     }
     bool exist_at_list_one_filament =false;
     for (auto &cur : list) {
@@ -15999,30 +16014,19 @@ bool Plater::priv::check_ams_status_impl(bool is_slice_all)
         }
 
         if (!is_same_as_printer) {
-            struct SyncInfoDialog : MessageDialog
-            {
-                SyncInfoDialog(wxWindow *parent)
-                    : MessageDialog(parent,
-                                    _L("The nozzle type and AMS quantity information has not been synced from the connected printer.\n"
-                                       "After syncing, software can optimize printing time and filament usage when slicing.\n"
-                                       "Would you like to sync now ?"),
-                                    _L("Warning"), 0)
-                {
-                    add_button(wxID_YES, true, _L("Sync now"));
-                    add_button(wxID_NO, true, _L("Later"));
-                }
-            } dlg(q);
-            dlg.Fit();
-            if (dlg.ShowModal() == wxID_YES) {
-                if (GUI::wxGetApp().sidebar().sync_extruder_list()) {
-                    if (is_slice_all)
-                        wxPostEvent(q, SimpleEvent(EVT_GLTOOLBAR_SLICE_ALL));
-                    else
-                        wxPostEvent(q, SimpleEvent(EVT_GLTOOLBAR_SLICE_PLATE));
-                    wxGetApp().mainframe->m_tabpanel->SetSelection(MainFrame::TabPosition::tpPreview);
-                }
+            // Attempt sync directly — if the nozzle dialog can auto-resolve
+            // (project nozzle matches an available option), this completes silently.
+            // Otherwise the nozzle selection dialog is shown for the user to choose.
+            if (GUI::wxGetApp().sidebar().sync_extruder_list()) {
+                if (is_slice_all)
+                    wxPostEvent(q, SimpleEvent(EVT_GLTOOLBAR_SLICE_ALL));
+                else
+                    wxPostEvent(q, SimpleEvent(EVT_GLTOOLBAR_SLICE_PLATE));
+                wxGetApp().mainframe->m_tabpanel->SetSelection(MainFrame::TabPosition::tpPreview);
                 return false;
             }
+            // Sync failed or user cancelled nozzle selection —
+            // fall through to slice with current settings (equivalent to old "Later" button).
         }
     }
 
@@ -17385,8 +17389,13 @@ bool Plater::try_sync_preset_with_connected_printer(int& nozzle_diameter)
     if (!obj->is_online()) {
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << "obj->is_online(): " << obj->is_online();
         auto printer_name = get_selected_printer_name_in_combox();
-        pop_warning_and_go_to_device_page(printer_name, Plater::PrinterWarningType::NOT_CONNECTED, _L("Sync printer information"));
-        return false;
+        if (pop_warning_and_go_to_device_page(printer_name, Plater::PrinterWarningType::NOT_CONNECTED, _L("Sync printer information"))) {
+            obj = dev->get_selected_machine();
+            if (!obj || !obj->is_online())
+                return false;
+        } else {
+            return false;
+        }
     }
     PresetBundle* preset_bundle = wxGetApp().preset_bundle;
     Preset& printer_preset = preset_bundle->printers.get_selected_preset();
@@ -22990,8 +22999,36 @@ wxString Plater::get_selected_printer_name_in_combox() {
     return printer_model;
 }
 
-void Plater::pop_warning_and_go_to_device_page(wxString printer_name, PrinterWarningType type, const wxString &title)
+bool Plater::pop_warning_and_go_to_device_page(wxString printer_name, PrinterWarningType type, const wxString &title)
 {
+    // For NOT_CONNECTED, try auto-connect before showing the dialog
+    if (type == PrinterWarningType::NOT_CONNECTED) {
+        auto* dev = wxGetApp().getDeviceManager();
+        if (dev) {
+            auto* obj = dev->get_selected_machine();
+            if (!obj) {
+                dev->load_last_machine();
+                obj = dev->get_selected_machine();
+            }
+            if (!obj) {
+                auto last_id = dev->get_user_last_machine();
+                if (!last_id.empty()) {
+                    dev->set_selected_machine(last_id, true);
+                    obj = dev->get_selected_machine();
+                }
+            }
+            if (obj && !obj->is_online()) {
+                BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << " attempting auto-reconnect";
+                dev->set_selected_machine(obj->get_dev_id(), true);
+                wxBusyCursor wait;
+                for (int i = 0; i < 50 && !obj->is_online(); ++i)
+                    wxMilliSleep(100);
+            }
+            if (obj && obj->is_online())
+                return true;
+        }
+    }
+
     printer_name.Replace("Bambu Lab", "", false);
     printer_name.Trim(true).Trim(false);
     wxString content;
@@ -23009,6 +23046,7 @@ void Plater::pop_warning_and_go_to_device_page(wxString printer_name, PrinterWar
     if (result == wxFORWARD) {
         wxGetApp().mainframe->select_tab(size_t(MainFrame::tpMonitor));
     }
+    return false;
 }
 
 bool Plater::is_same_printer_for_connected_and_selected(bool popup_warning)
