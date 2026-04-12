@@ -17302,9 +17302,6 @@ void Plater::reset_flags_when_new_or_close_project()
 
 int Plater::new_project(bool skip_confirm, bool silent, const wxString &project_name)
 {
-    model().calib_pa_pattern.reset(nullptr);
-    model().plates_custom_gcodes.clear();
-
     bool transfer_preset_changes = false;
     // BBS: save confirm
     auto check = [this,&transfer_preset_changes](bool yes_or_no) {
@@ -17326,6 +17323,9 @@ int Plater::new_project(bool skip_confirm, bool silent, const wxString &project_
     int result;
     if (!skip_confirm && (result = close_with_confirm(check)) == wxID_CANCEL)
         return wxID_CANCEL;
+
+    model().calib_pa_pattern.reset(nullptr);
+    model().plates_custom_gcodes.clear();
 
     reset_flags_when_new_or_close_project();
     get_notification_manager()->clear_all();
@@ -17464,9 +17464,6 @@ bool Plater::try_sync_preset_with_connected_printer(int& nozzle_diameter)
 int Plater::load_project(wxString const &filename2,
     wxString const& originfile)
 {
-    model().calib_pa_pattern.reset(nullptr);
-    model().plates_custom_gcodes.clear();
-
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << "filename is: " << PathSanitizer::sanitize(filename2.ToUTF8().data())
                             << "and originfile is: " << PathSanitizer::sanitize(originfile.ToUTF8().data());
     auto filename = filename2;
@@ -17486,6 +17483,9 @@ int Plater::load_project(wxString const &filename2,
     if (wx_dlg_id == wxID_CANCEL) {
         return wx_dlg_id;
     }
+
+    model().calib_pa_pattern.reset(nullptr);
+    model().plates_custom_gcodes.clear();
 
     //BBS: add only gcode mode
     bool previous_gcode = m_only_gcode;
@@ -17612,7 +17612,7 @@ int Plater::save_project(bool saveAs)
     if (saveAs)
         filename = p->get_export_file(FT_3MF);
     if (filename.empty())
-        return wxID_NO;
+        return wxID_CANCEL;
     if (filename == "<cancel>")
         return wxID_CANCEL;
 
@@ -19839,7 +19839,10 @@ int GUI::Plater::close_with_confirm(std::function<bool(bool)> second_check)
     }
 
     MessageDialog dlg(static_cast<wxWindow*>(this), _L("The current project has unsaved changes, save it before continue?"),
-        wxString(SLIC3R_APP_FULL_NAME) + " - " + _L("Save"), wxYES_NO | wxCANCEL | wxYES_DEFAULT | wxCENTRE);
+        wxString(SLIC3R_APP_FULL_NAME) + " - " + _L("Save"), wxCENTRE);
+    dlg.AddButton(wxID_YES, _L("Save"), true);
+    dlg.AddButton(wxID_NO, _L("Don't Save"));
+    dlg.AddButton(wxID_CANCEL, _L("Cancel"));
     dlg.show_dsa_button(_L("Remember my choice."));
     auto choise = wxGetApp().app_config->get("save_project_choise");
     auto result = choise.empty() ? dlg.ShowModal() : choise == "yes" ? wxID_YES : wxID_NO;
@@ -19850,12 +19853,8 @@ int GUI::Plater::close_with_confirm(std::function<bool(bool)> second_check)
             wxGetApp().app_config->set("save_project_choise", result == wxID_YES ? "yes" : "no");
         if (result == wxID_YES) {
             result = save_project();
-            if (result == wxID_CANCEL) {
-                if (choise.empty())
-                    return result;
-                else
-                    result = wxID_NO;
-            }
+            if (result == wxID_CANCEL)
+                return result;
         }
     }
 
