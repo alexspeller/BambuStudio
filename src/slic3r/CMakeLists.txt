@@ -320,6 +320,12 @@ set(SLIC3R_GUI_SOURCES
     GUI/OptionsGroup.hpp
     GUI/OG_CustomCtrl.cpp
     GUI/OG_CustomCtrl.hpp
+    GUI/DefaultOverrideManager.cpp
+    GUI/DefaultOverrideManager.hpp
+    GUI/UpdateDefaultsDialog.cpp
+    GUI/UpdateDefaultsDialog.hpp
+    GUI/DefaultOverridesManagerDialog.cpp
+    GUI/DefaultOverridesManagerDialog.hpp
     GUI/MarkdownTip.cpp
     GUI/MarkdownTip.hpp
     GUI/2DBed.cpp

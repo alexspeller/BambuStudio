@@ -4,6 +4,9 @@
 #include "Plater.hpp"
 #include "GUI_App.hpp"
 #include "MsgDialog.hpp"
+#include "DefaultOverrideManager.hpp"
+#include "UpdateDefaultsDialog.hpp"
+#include "DefaultOverridesManagerDialog.hpp"
 #include "libslic3r/AppConfig.hpp"
 
 #include <wx/utils.h>
@@ -66,6 +69,7 @@ OG_CustomCtrl::OG_CustomCtrl(   wxWindow*            parent,
     this->Bind(wxEVT_PAINT,     &OG_CustomCtrl::OnPaint, this);
     this->Bind(wxEVT_MOTION,    &OG_CustomCtrl::OnMotion, this);
     this->Bind(wxEVT_LEFT_DOWN, &OG_CustomCtrl::OnLeftDown, this);
+    this->Bind(wxEVT_RIGHT_DOWN, &OG_CustomCtrl::OnRightDown, this);
     this->Bind(wxEVT_LEAVE_WINDOW, &OG_CustomCtrl::OnLeaveWin, this);
 }
 
@@ -496,6 +500,95 @@ void OG_CustomCtrl::OnLeftDown(wxMouseEvent& event)
     }
 
     SetFocusIgnoringChildren();
+}
+
+// BBS: right-click on a setting row opens a context menu with "Update defaults..."
+// which lets the user push the current value into the read-only system presets
+// as a managed override. See DefaultOverrideManager and UpdateDefaultsDialog.
+void OG_CustomCtrl::OnRightDown(wxMouseEvent& event)
+{
+    const wxPoint pos = event.GetLogicalPosition(wxClientDC(this));
+
+    // Walk the ctrl_lines in the same order they are painted, tracking the
+    // vertical offset so we can figure out which line the mouse is on.
+    wxCoord v_pos = 0;
+    const CtrlLine* hit_line = nullptr;
+    for (const CtrlLine& line : ctrl_lines) {
+        if (!line.is_visible)
+            continue;
+        if (pos.y >= v_pos && pos.y < v_pos + line.height) {
+            hit_line = &line;
+            break;
+        }
+        v_pos += line.height;
+    }
+
+    if (hit_line == nullptr || hit_line->is_separator()) {
+        event.Skip();
+        return;
+    }
+
+    const std::vector<Option>& option_set = hit_line->og_line.get_options();
+    if (option_set.empty()) {
+        event.Skip();
+        return;
+    }
+
+    // For multi-option rows we default to the first option. The user can still
+    // disambiguate by right-clicking close to that option's undo icon - that's
+    // a nice-to-have we can add later if it turns out to matter in practice.
+    size_t opt_idx = 0;
+    for (size_t i = 0; i < hit_line->rects_undo_icon.size() && i < option_set.size(); i++) {
+        if (is_point_in_rect(pos, hit_line->rects_undo_icon[i])) {
+            opt_idx = i;
+            break;
+        }
+    }
+    const Option& opt = option_set[opt_idx];
+
+    // Only make sense for ConfigOptionsGroup (tabs/params panels). Skip for
+    // non-config groups (e.g. object settings ad-hoc groups).
+    ConfigOptionsGroup* cog = dynamic_cast<ConfigOptionsGroup*>(opt_group);
+    if (!cog) {
+        event.Skip();
+        return;
+    }
+
+    // Only print/filament/printer tabs make sense as override targets.
+    const Preset::Type preset_type = static_cast<Preset::Type>(cog->config_type());
+    if (preset_type != Preset::TYPE_PRINT &&
+        preset_type != Preset::TYPE_FILAMENT &&
+        preset_type != Preset::TYPE_PRINTER) {
+        event.Skip();
+        return;
+    }
+
+    wxMenu menu;
+    wxString label = opt.opt.label.empty() ? wxString::FromUTF8(opt.opt_id.c_str())
+                                            : _(opt.opt.label);
+    const int ID_UPDATE_DEFAULTS = wxNewId();
+    const int ID_VIEW_OVERRIDES  = wxNewId();
+
+    menu.Append(ID_UPDATE_DEFAULTS,
+                wxString::Format(_L("Update defaults for \"%s\"..."), label));
+
+    if (wxGetApp().default_override_manager &&
+        !wxGetApp().default_override_manager->overrides().empty()) {
+        menu.AppendSeparator();
+        menu.Append(ID_VIEW_OVERRIDES, _L("View default overrides..."));
+    }
+
+    const std::string opt_key    = opt.opt_id;
+    const wxString    opt_label  = label;
+    menu.Bind(wxEVT_MENU, [this, opt_key, opt_label, preset_type, cog](wxCommandEvent&) {
+        UpdateDefaultsDialog::show_for(this, opt_key, opt_label, preset_type, cog);
+    }, ID_UPDATE_DEFAULTS);
+    menu.Bind(wxEVT_MENU, [this](wxCommandEvent&) {
+        DefaultOverridesManagerDialog::show(this);
+    }, ID_VIEW_OVERRIDES);
+
+    PopupMenu(&menu);
+    event.Skip();
 }
 
 void OG_CustomCtrl::OnLeaveWin(wxMouseEvent& event)

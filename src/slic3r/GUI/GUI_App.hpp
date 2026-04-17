@@ -97,6 +97,7 @@ class ParamsDialog;
 class HMSQuery;
 class ModelMallDialog;
 class PingCodeBindDialog;
+class DefaultOverrideManager;
 class NetworkErrorDialog;
 class OpenGLManager;
 
@@ -705,6 +706,15 @@ public:
     Plater*         plater_{ nullptr };
 
 	PresetUpdater*  get_preset_updater() { return preset_updater; }
+
+    // Default overrides - applies {setting_key -> value} pairs into the read-only
+    // system preset JSON files so they become the effective default for all derived
+    // user presets. See DefaultOverrideManager.hpp and UpdateDefaultsDialog.
+    DefaultOverrideManager* default_override_manager{ nullptr };
+
+    // Safe mid-session reload after default overrides have mutated system presets.
+    // Mirrors the sequence used by PresetUpdater::reload_configs_update_gui().
+    void            reload_presets_after_override();
 
     Notebook*       tab_panel() const ;
     int             extruders_cnt() const;

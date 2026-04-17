@@ -341,6 +341,9 @@ public:
     void        msw_rescale();
     void        sys_color_changed();
     void        refresh();
+    // BBS: non-owning const accessor used by the default-override UI to read
+    // the currently-edited value for a setting without going through boost::any.
+    const DynamicPrintConfig* get_config() const { return m_config; }
 	boost::any	config_value(const std::string& opt_key, int opt_index, bool deserialize);
 	// return option value from config
 	boost::any	get_config_value(const DynamicPrintConfig& config, const std::string& opt_key, int opt_index = -1);

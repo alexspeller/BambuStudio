@@ -98,6 +98,7 @@
 #include "DesktopIntegrationDialog.hpp"
 #include "SendSystemInfoDialog.hpp"
 #include "ParamsDialog.hpp"
+#include "DefaultOverrideManager.hpp"
 #include "KBShortcutsDialog.hpp"
 #include "DownloadProgressDialog.hpp"
 #include "HttpServer.hpp"
@@ -2326,6 +2327,12 @@ GUI_App::~GUI_App()
         delete preset_bundle;
     }
 
+    if (default_override_manager != nullptr) {
+        BOOST_LOG_TRIVIAL(info) << __FUNCTION__<< boost::format(": destroy default_override_manager");
+        delete default_override_manager;
+        default_override_manager = nullptr;
+    }
+
     if (preset_updater != nullptr) {
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__<< boost::format(": destroy preset updater");
         delete preset_updater;
@@ -3279,6 +3286,13 @@ bool GUI_App::on_init_inner()
     } else {
         enable_user_preset_folder(false);
     }
+
+    // BBS: apply default overrides to system preset files before they are loaded.
+    // The manager mutates the on-disk JSON files so the presets pick up our
+    // overridden values during the regular load path - no special reload needed.
+    default_override_manager = new DefaultOverrideManager();
+    default_override_manager->load();
+    default_override_manager->rebuild_all_affected_files();
 
     // BBS if load user preset failed
     //if (loaded_preset_result != 0) {
@@ -7295,6 +7309,25 @@ void GUI_App::load_current_presets(bool active_preset_combox/*= false*/, bool ch
 		if (tab->supports_printer_technology(printer_technology)) {
             tab->rebuild_page_tree();
         }
+}
+
+// BBS: Called after DefaultOverrideManager has mutated system preset files on
+// disk. Mirrors the sequence used by PresetUpdater::reload_configs_update_gui().
+// See the audit in plans/glittery-seeking-dewdrop.md for why each step is
+// required to avoid dangling vendor pointers and stale m_edited_preset copies.
+void GUI_App::reload_presets_after_override()
+{
+    wxString header = _L("Save the current preset before reloading defaults?");
+    if (!check_and_save_current_preset_changes(_L("Default overrides"), header, false))
+        return;
+
+    preset_bundle->load_presets(*app_config,
+        ForwardCompatibilitySubstitutionRule::EnableSilentDisableSystem);
+
+    load_current_presets();
+
+    if (plater_)
+        plater_->set_bed_shape();
 }
 
 static std::mutex mutex_delete_cache_presets;
