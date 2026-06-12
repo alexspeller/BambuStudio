@@ -19843,14 +19843,10 @@ int GUI::Plater::close_with_confirm(std::function<bool(bool)> second_check)
     dlg.AddButton(wxID_YES, _L("Save"), true);
     dlg.AddButton(wxID_NO, _L("Don't Save"));
     dlg.AddButton(wxID_CANCEL, _L("Cancel"));
-    dlg.show_dsa_button(_L("Remember my choice."));
-    auto choise = wxGetApp().app_config->get("save_project_choise");
-    auto result = choise.empty() ? dlg.ShowModal() : choise == "yes" ? wxID_YES : wxID_NO;
+    auto result = dlg.ShowModal();
     if (result == wxID_CANCEL)
         return result;
     else {
-        if (dlg.get_checkbox_state())
-            wxGetApp().app_config->set("save_project_choise", result == wxID_YES ? "yes" : "no");
         if (result == wxID_YES) {
             result = save_project();
             if (result == wxID_CANCEL)
