@@ -7455,19 +7455,9 @@ void GUI_App::MacOpenURL(const wxString& url)
 // wxWidgets override to get an event on open files.
 void GUI_App::MacOpenFiles(const wxArrayString &fileNames)
 {
-    bool single_instance = app_config->get("app", "single_instance") == "true";
-    if (m_post_initialized && !single_instance) {
-        bool has3mf = false;
-        std::vector<wxString> names;
-        for (auto & n : fileNames) {
-            has3mf |= n.EndsWith(".3mf");
-            names.push_back(n);
-        }
-        if (has3mf) {
-            start_new_slicer(names);
-            return;
-        }
-    }
+    // Opening a project that would replace existing work is centrally handled in
+    // Plater::load_project (which spawns a new instance when appropriate), so this
+    // path just forwards the files through the normal load flow.
     std::vector<std::string> files;
     std::vector<wxString>    gcode_files;
     std::vector<wxString>    non_gcode_files;

@@ -17467,6 +17467,23 @@ int Plater::load_project(wxString const &filename2,
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << "filename is: " << PathSanitizer::sanitize(filename2.ToUTF8().data())
                             << "and originfile is: " << PathSanitizer::sanitize(originfile.ToUTF8().data());
     auto filename = filename2;
+
+    // Centralised multi-instance handling: when multiple instances are allowed and the
+    // current instance already has a project loaded, open the incoming project in a NEW
+    // instance, leaving the current project (and its unsaved changes) untouched.
+    // Backup restore (originfile != "-") and a fresh/empty instance are excluded.
+    if (originfile == "-"
+        && wxGetApp().app_config->get("app", "single_instance") != "true"
+        && !model().objects.empty()) {
+        if (filename.empty()) {
+            wxGetApp().load_project(this, filename); // same project file picker used below
+            if (filename.empty())
+                return wxID_CANCEL;                   // user cancelled the picker
+        }
+        start_new_slicer(std::vector<wxString>{ filename });
+        return wxID_CANCEL; // current instance does nothing further
+    }
+
     auto check = [&filename, this] (bool yes_or_no) {
         if (!yes_or_no && !wxGetApp().check_and_save_current_preset_changes(_L("Load project"),
                 _L("Some presets are modified.")))
