@@ -82,6 +82,14 @@ private:
 
     void on_show_hide(wxShowEvent & evt);
 
+    void on_activate_app(wxActivateEvent & evt);
+
+    // Unified play/stop decision shared by the show/hide and app-activation handlers.
+    void update_play_state();
+
+    // Preference (liveview/auto_play_on_focus, default on) gating focus-aware auto-start.
+    bool auto_play_on_focus() const;
+
     void media_proc();
 
     static bool start_stream_service(bool *need_install = nullptr);
@@ -121,6 +129,7 @@ private:
 
     bool m_streaming = false;
     bool m_user_triggered = false;
+    bool m_app_active = true;
     int m_failed_retry = 0;
     int m_failed_code = 0;
     std::vector<double> m_stat;

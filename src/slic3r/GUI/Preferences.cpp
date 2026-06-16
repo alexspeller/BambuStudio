@@ -817,6 +817,8 @@ wxBoxSizer *PreferencesDialog::create_item_checkbox(wxString title, wxWindow *pa
         checkbox->SetValue((app_config->get("firstguide", param) == "true") ? true : false);
     } else if (param == "auto_stop_liveview") {
         checkbox->SetValue((app_config->get("liveview", param) == "true") ? false : true);
+    } else if (param == "auto_play_on_focus") {
+        checkbox->SetValue(app_config->get("liveview", param) != "false"); // default on
     } else {
         checkbox->SetValue((app_config->get(param) == "true") ? true : false);
     }
@@ -850,6 +852,10 @@ wxBoxSizer *PreferencesDialog::create_item_checkbox(wxString title, wxWindow *pa
         }
         else if (param == "auto_stop_liveview") {
             app_config->set("liveview", param, !checkbox->GetValue());
+        }
+        else if (param == "auto_play_on_focus") {
+            app_config->set("liveview", param, checkbox->GetValue());
+            app_config->save();
         }
         else {
             app_config->set_bool(param, checkbox->GetValue());
@@ -1460,6 +1466,7 @@ wxWindow* PreferencesDialog::create_general_page()
 
     auto title_media = create_item_title(_L("Media"), page, _L("Media"));
     auto item_auto_stop_liveview = create_item_checkbox(_L("Keep liveview when printing."), page, _L("By default, Liveview will pause after 15 minutes of inactivity on the computer. Check this box to disable this feature during printing."), 50, "auto_stop_liveview");
+    auto item_auto_play_on_focus = create_item_checkbox(_L("Automatically start liveview when focused."), page, _L("When enabled, the printer liveview starts automatically whenever the Device tab is open and Bambu Studio is the focused window, and pauses when you switch away or focus another app."), 50, "auto_play_on_focus");
 
     //dark mode
 #ifdef _WIN32
@@ -1571,6 +1578,7 @@ wxWindow* PreferencesDialog::create_general_page()
 
     sizer_page->Add(title_media, 0, wxTOP| wxEXPAND, FromDIP(20));
     sizer_page->Add(item_auto_stop_liveview, 0, wxEXPAND, FromDIP(3));
+    sizer_page->Add(item_auto_play_on_focus, 0, wxEXPAND, FromDIP(3));
 
 #ifdef _WIN32
     sizer_page->Add(title_darkmode, 0, wxTOP | wxEXPAND, FromDIP(20));

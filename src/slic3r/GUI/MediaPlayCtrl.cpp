@@ -151,6 +151,11 @@ MediaPlayCtrl::MediaPlayCtrl(wxWindow *parent, wxMediaCtrl3 *media_ctrl, const w
     parent->Bind(wxEVT_SHOW, &MediaPlayCtrl::on_show_hide, this);
     parent->GetParent()->GetParent()->Bind(wxEVT_SHOW, &MediaPlayCtrl::on_show_hide, this);
 
+    // Track application focus so the liveview can pause when Bambu Studio is not the
+    // foreground app and resume when it is (combined with the tab visibility above).
+    m_app_active = wxGetApp().IsActive();
+    wxGetApp().Bind(wxEVT_ACTIVATE_APP, &MediaPlayCtrl::on_activate_app, this);
+
     m_lan_user = "bblp";
     m_lan_passwd = "bblp";
     m_image_transfer = std::make_shared<FileTransferObject>();
@@ -158,6 +163,7 @@ MediaPlayCtrl::MediaPlayCtrl(wxWindow *parent, wxMediaCtrl3 *media_ctrl, const w
 
 MediaPlayCtrl::~MediaPlayCtrl()
 {
+    wxGetApp().Unbind(wxEVT_ACTIVATE_APP, &MediaPlayCtrl::on_activate_app, this);
     {
         boost::unique_lock lock(m_mutex);
         m_tasks.push_back("<exit>");
@@ -310,6 +316,8 @@ void MediaPlayCtrl::Play()
     if (!m_next_retry.IsValid() || wxDateTime::Now() < m_next_retry)
         return;
     if (!IsShownOnScreen())
+        return;
+    if (auto_play_on_focus() && !m_app_active)
         return;
     if (m_last_state != MEDIASTATE_IDLE) {
         return;
@@ -1050,14 +1058,41 @@ void MediaPlayCtrl::load()
     m_cond.notify_all();
 }
 
+bool MediaPlayCtrl::auto_play_on_focus() const
+{
+    // Default on: only an explicit "false" disables it (mirrors the "auto_retry" convention).
+    return wxGetApp().app_config->get("liveview", "auto_play_on_focus") != "false";
+}
+
 void MediaPlayCtrl::on_show_hide(wxShowEvent &evt)
 {
     evt.Skip();
+    update_play_state();
+}
+
+void MediaPlayCtrl::on_activate_app(wxActivateEvent &evt)
+{
+    evt.Skip();
+    bool active = evt.GetActive();
+    if (active == m_app_active) return;
+    m_app_active = active;
+    if (!auto_play_on_focus()) return; // feature off: ignore app focus, keep upstream behavior
+    update_play_state();
+}
+
+void MediaPlayCtrl::update_play_state()
+{
     if (m_isBeingDeleted) return;
     m_failed_retry = 0;
+    bool feature   = auto_play_on_focus();
+    bool want_play = IsShownOnScreen() && (!feature || m_app_active);
     if (m_next_retry.IsValid()) // Try open 2 seconds later, to avoid quick play/stop
         m_next_retry = wxDateTime::Now() + wxTimeSpan::Seconds(2);
-    if (IsShownOnScreen()) {
+    if (want_play) {
+        // Seed the retry clock so the stream auto-starts even if the user never pressed play
+        // (upstream gates auto-play on a prior manual play). Only when the feature is enabled.
+        if (feature && !m_next_retry.IsValid())
+            m_next_retry = wxDateTime::Now();
         Play();
         start_device_image_flow();
     } else {
